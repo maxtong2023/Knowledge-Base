@@ -135,6 +135,166 @@ class KBTest(unittest.TestCase):
         self.assertTrue(answer1 is not None)
         self.assertTrue(len(answer1) > 0)
 
+    def test3(self):
+        # test single statement LHS rule
+        kb = KnowledgeBase([], [])
+        f1 = read.parse_input("fact: (student john)")
+        r1 = read.parse_input("rule: ((student ?x)) -> (person ?x)")
+        
+        kb.kb_assert(f1)
+        kb.kb_assert(r1)
+        
+        q = read.parse_input("fact: (person john)")
+        result = kb.kb_ask(q)
+        
+        self.assertTrue(result is not None)
+        self.assertTrue(len(result) > 0)
+
+    def test4(self):
+        #testing rule with 3 statements on LHS
+        KB = KnowledgeBase([], [])
+        fact_a = read.parse_input("fact: (hasA X)")
+        fact_b = read.parse_input("fact: (hasB X)")
+        fact_c = read.parse_input("fact: (hasC X)")
+        rule = read.parse_input("rule: ((hasA ?x) (hasB ?x) (hasC ?x)) -> (hasAll ?x)")
+        
+        KB.kb_assert(fact_a)
+        KB.kb_assert(fact_b)
+        KB.kb_assert(fact_c)
+        KB.kb_assert(rule)
+        
+        # should create curried rules first
+        # check that intermediate rule exists
+        intermediate = read.parse_input("rule: ((hasB X) (hasC X)) -> (hasAll X)")
+        self.assertTrue(intermediate in KB.rules)
+        
+        # then should infer final fact
+        query = read.parse_input("fact: (hasAll X)")
+        ans = KB.kb_ask(query)
+        self.assertTrue(len(ans) > 0)
+
+    def test5(self):
+        # test that non-matching facts don't trigger rules
+        kb_test = KnowledgeBase([], [])
+        f = read.parse_input("fact: (color apple red)")
+        r = read.parse_input("rule: ((color ?x blue)) -> (cool ?x)")
+        
+        kb_test.kb_assert(f)
+        kb_test.kb_assert(r)
+        
+        # should not create any inferred facts
+        q = read.parse_input("fact: (cool apple)")
+        res = kb_test.kb_ask(q)
+        self.assertEqual(len(res), 0)
+
+    def test9(self):
+        # test multiple variables in one statement
+        KB = KnowledgeBase([], [])
+        f1 = read.parse_input("fact: (parent alice bob)")
+        f2 = read.parse_input("fact: (parent bob charlie)")
+        r1 = read.parse_input("rule: ((parent ?x ?y) (parent ?y ?z)) -> (grandparent ?x ?z)")
+        
+        KB.kb_assert(f1)
+        KB.kb_assert(f2)
+        KB.kb_assert(r1)
+        
+        # should eventually infer the fact (might go through curried rules)
+        q = read.parse_input("fact: (grandparent alice charlie)")
+        a = KB.kb_ask(q)
+        self.assertTrue(len(a) > 0)
+
+    def test10(self):
+        # test one fact triggering multiple rules
+        kb = KnowledgeBase([], [])
+        fact1 = read.parse_input("fact: (animal dog)")
+        rule1 = read.parse_input("rule: ((animal ?x)) -> (living ?x)")
+        rule2 = read.parse_input("rule: ((animal ?x)) -> (mortal ?x)")
+        
+        kb.kb_assert(fact1)
+        kb.kb_assert(rule1)
+        kb.kb_assert(rule2)
+        
+        # both rules should trigger
+        q1 = read.parse_input("fact: (living dog)")
+        q2 = read.parse_input("fact: (mortal dog)")
+        a1 = kb.kb_ask(q1)
+        a2 = kb.kb_ask(q2)
+        
+        self.assertTrue(len(a1) > 0)
+        self.assertTrue(len(a2) > 0)
+
+    def test13(self):
+        # test support relationships are tracked correctly
+        KB = KnowledgeBase([], [])
+        f1 = read.parse_input("fact: (a 1)")
+        f2 = read.parse_input("fact: (b 1)")
+        r1 = read.parse_input("rule: ((a ?x) (b ?x)) -> (c ?x)")
+        
+        KB.kb_assert(f1)
+        KB.kb_assert(f2)
+        KB.kb_assert(r1)
+        
+        # find the inferred fact
+        inferred_fact = None
+        for fact in KB.facts:
+            if str(fact.statement) == "(c 1)":
+                inferred_fact = fact
+                break
+        
+        self.assertIsNotNone(inferred_fact)
+        # check it has support
+        self.assertTrue(len(inferred_fact.supported_by) > 0)
+        # f1 should support either a rule or fact
+        self.assertTrue(len(f1.supports_facts) > 0 or len(f1.supports_rules) > 0)
+
+    def test14(self):
+        # test deep inference chain
+        kb = KnowledgeBase([], [])
+        f = read.parse_input("fact: (level1 start)")
+        r1 = read.parse_input("rule: ((level1 ?x)) -> (level2 ?x)")
+        r2 = read.parse_input("rule: ((level2 ?x)) -> (level3 ?x)")
+        r3 = read.parse_input("rule: ((level3 ?x)) -> (level4 ?x)")
+        
+        kb.kb_assert(f)
+        kb.kb_assert(r1)
+        kb.kb_assert(r2)
+        kb.kb_assert(r3)
+        
+        # should eventually infer level4
+        query = read.parse_input("fact: (level4 start)")
+        answer = kb.kb_ask(query)
+        self.assertTrue(len(answer) > 0)
+
+    def test15(self):
+        # test rule with no match doesn't break anything
+        KB = KnowledgeBase([], [])
+        rule = read.parse_input("rule: ((nonexistent ?x)) -> (result ?x)")
+        KB.kb_assert(rule)
+        
+        # should not crash, just no inference
+        self.assertEqual(len(KB.facts), 0)  # no facts added yet
+        self.assertEqual(len(KB.rules), 1)  # just the one rule we added
+
+    def test16(self):
+        # test variable binding across multiple statements
+        kb = KnowledgeBase([], [])
+        f1 = read.parse_input("fact: (owns alice car1)")
+        f2 = read.parse_input("fact: (owns alice house1)")
+        r = read.parse_input("rule: ((owns ?p ?c) (owns ?p ?h)) -> (hasBoth ?p)")
+        
+        kb.kb_assert(f1)
+        kb.kb_assert(f2)
+        kb.kb_assert(r)
+        
+        # should create curried rule with ?p bound to alice
+        curried = read.parse_input("rule: ((owns alice ?h)) -> (hasBoth alice)")
+        self.assertTrue(curried in kb.rules)
+        
+        # then should infer fact
+        q = read.parse_input("fact: (hasBoth alice)")
+        a = kb.kb_ask(q)
+        self.assertTrue(len(a) > 0)
+
 
 def pprint_justification(answer):
     """Pretty prints (hence pprint) justifications for the answer.
