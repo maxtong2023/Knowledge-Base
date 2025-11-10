@@ -133,59 +133,38 @@ class InferenceEngine(object):
         ####################################################
         # Student code goes here
         
-        # Check if the fact matches the first statement of the rule's LHS
+        
         if len(rule.lhs) == 0:
-            return  # can't match if rule has no LHS
+            return  #can't match if rule doesn't have an lhs
         
-        first_lhs_statement = rule.lhs[0]
-        fact_statement = fact.statement
+        firstLHS = rule.lhs[0]
+        factSTMT = fact.statement
         
-        # Try to match the fact with the first LHS statement
-        bindings_result = match(fact_statement, first_lhs_statement)
+        result = match(factSTMT, firstLHS)
         
-        # If they don't match, nothing to infer
-        if not bindings_result:
+        if not result: # no match 
             return
         
-        # If we have a match, we can do inference!
-        # Check how many statements are left in the LHS
-        remaining_lhs = rule.lhs[1:]
+        remainder = rule.lhs[1:]
+        supportPair = [fact, rule]
         
-        # Create the support pair for tracking
-        support_pair = [fact, rule]
-        
-        if len(remaining_lhs) > 0:
-            # There are more statements in LHS, so we need to create a new curried rule
-            # Instantiate the remaining LHS statements with the bindings
-            new_lhs = []
-            for stmt in remaining_lhs:
-                instantiated_stmt = instantiate(stmt, bindings_result)
-                new_lhs.append(instantiated_stmt)
-            
-            # Also instantiate the RHS
-            new_rhs = instantiate(rule.rhs, bindings_result)
-            
-            # Create the new curried rule
-            new_rule = Rule([new_lhs, new_rhs], supported_by=[support_pair])
-            
-            # Update support relationships
-            fact.supports_rules.append(new_rule)
-            rule.supports_rules.append(new_rule)
-            
-            # Add the new rule to KB (this will trigger more inference)
-            kb.kb_add(new_rule)
+        if len(remainder) > 0:
+            newLHS = []
+            for stmt in remainder:
+                instantiatedStmt = instantiate(stmt, result)
+                newLHS.append(instantiatedStmt)
+            newRHS = instantiate(rule.rhs, result)
+            # create the new rule
+            newRule = Rule([newLHS, newRHS], supported_by=[supportPair])
+            fact.supports_rules.append(newRule) # update these relatinships
+            rule.supports_rules.append(newRule)
+            kb.kb_add(newRule)
             
         else:
-            # No more statements in LHS, so we can infer a new fact from the RHS
-            # Instantiate the RHS with the bindings
-            new_rhs_statement = instantiate(rule.rhs, bindings_result)
+            # No more statements in LHS so we can infer new fact
+            newRHSstatement = instantiate(rule.rhs, result)
+            newFact = Fact(newRHSstatement, supported_by=[supportPair])
             
-            # Create the new fact
-            new_fact = Fact(new_rhs_statement, supported_by=[support_pair])
-            
-            # Update support relationships
-            fact.supports_facts.append(new_fact)
-            rule.supports_facts.append(new_fact)
-            
-            # Add the new fact to KB (this will trigger more inference)
-            kb.kb_add(new_fact)
+            fact.supports_facts.append(newFact)
+            rule.supports_facts.append(newFact)
+            kb.kb_add(newFact)
